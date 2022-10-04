@@ -1,8 +1,11 @@
-var img;
+var img, audioFile;
+var oldImgW, oldImgH, scaleBy;
+var noisy, togglePlay, fft;
+var dithered = [];
+var colorBitDepth = 4;
 
 function preload() {
      img = loadImage('minnie.jpg');
-    //img = loadImage('cattail_boys_cover.png');
 }
 
 function fitImageToCanvas() {
@@ -10,37 +13,48 @@ function fitImageToCanvas() {
     if (img.height >= height) img.resize(0, height);
 }
 
-function findNewWidthAndHeight(scale) {
+function findNewWidthAndHeight() {
     let newWidth, newHeight;
     if (img.width >= img.height) {
-        newWidth = img.width / scale;
+        newWidth = img.width / scaleBy;
         newHeight = 0;
     } else {
-        newHeight = img.height / scale;
+        newHeight = img.height / scaleBy;
         newWidth = 0;
     }
     img.resize(newWidth, newHeight);
-    //img.resize(oldWidth / 1.5, oldHeight / 1.5);
 }
 
 function setup() {
     createCanvas(windowWidth, windowHeight);
-    //background(11, 37, 69);
-    background(10, 20, 40);
-    var scale = 10;
-    fitImageToCanvas();
-    var oldW = round(img.width / 1.2);
-    var oldH = round(img.height / 1.2);
-    imageMode(CENTER);
-    findNewWidthAndHeight(scale);
-    console.log(oldW, oldH, img.width, img.height);
-    noStroke();
-    //strokeWeight(scale);
-    //image(img, width / 2, height / 2, oldW, oldH);
+    noisy = new p5.Noise('brown');
+    noisy.amp(0.1);
 
-    //image(img, width / 2, height / 2);
-    fsDither(oldW, oldH, scale);
-    noLoop();
+    fft = new p5.FFT();
+    scaleBy = 5;
+    fitImageToCanvas();
+    oldImgW = round(img.width / 1.2);
+    oldImgH = round(img.height / 1.2);
+    imageMode(CENTER);
+    findNewWidthAndHeight();
+
+    
+    togglePlay = createButton('play');
+    togglePlay.position((width - oldImgW) / 5, height / 2);
+    togglePlay.mousePressed(() => {
+        if (noisy.started) {
+            noisy.stop();
+            togglePlay.html('play');
+        } else {
+            noisy.start();
+            togglePlay.html('stop');
+        }
+    })
+    //console.log(oldImgW, oldImgH, img.width, img.height);
+    noStroke();
+    
+    fsDither(oldImgW, oldImgH);
+    //noLoop();
 }
 
 function pixIndex(x, y) {
@@ -52,7 +66,6 @@ function getPixelColor(x, y) {
     let g = img.pixels[pixIndex(x, y) + 1];
     let b = img.pixels[pixIndex(x, y) + 2];
     let a = img.pixels[pixIndex(x, y) + 3];
-
     return color(r, g, b, a);
 }
 
@@ -62,39 +75,37 @@ function setPixelColor(x, y, newColor) {
     img.pixels[pixIndex(x, y) + 2] = blue(newColor);
 }
 
-function fsDither(oldW, oldH, scale) {
-    let pColor, avgBright, newBright, rError, gError, bError;
+function fsDither(oldW, oldH) {
+    let pColor, avgBright, newBright, rError, gError, bError, newColor;
 
     img.loadPixels();
 
-    for (let x = 0; x < img.width; x++) {
-        for (let y = 0; y < img.height; y++) {
+    for (let x = 0; x < img.width - 1; x++) {
+        for (let y = 0; y < img.height - 1; y++) {
             pColor = getPixelColor(x, y);
             //avgBright = (red(pColor) * 0.3 + green(pColor) * 0.59 + blue(pColor) * 0.11);
             avgBright = (red(pColor) + green(pColor) + blue(pColor)) / 3;
-            newBright = round(4 * avgBright / 255) * round(255 / 4);
+            newBright = round((colorBitDepth - 1) * avgBright / 255) * round(255 / (colorBitDepth - 1));
             rError = red(pColor) - newBright;
             gError = green(pColor) - newBright;
             bError = blue(pColor) - newBright;
           
             diffuseError(x, y, rError, gError, bError);
 
-            //if (newBright / 64 === 0) stroke(10, 20, 40);
-            if (newBright / 64 === 1) fill(16, 32, 64);//stroke(16, 32, 64);//stroke(26, 56, 91);
-            if (newBright / 64 === 2) fill(32, 64, 128);//stroke(32, 64, 128);//stroke(19, 64, 116);
-            if (newBright / 64 === 3) fill(48, 96, 192);//stroke(48, 96, 192);//stroke(90, 136, 189);
-            if (newBright / 64 === 4) fill(64, 128, 255);//stroke(64, 128, 255);//stroke(149, 184, 209);
+            //colors will eventually need be to generative
+            //based on user input
+            if (newBright / 85 === 0) newColor = color(8, 16, 42);
+            if (newBright / 85 === 1) newColor = color(16, 32, 85);
+            if (newBright / 85 === 2) newColor = color(32, 64, 170);
+            if (newBright / 85 === 3) newColor = color(48, 96, 255);
 
-            if (newBright > 0) {
-                xPos = (windowWidth / 2) - (oldW / 2) + map(x, 0, img.width, 0, oldW);
-                yPos = (windowHeight / 2) - (oldH / 2) + map(y, 0, img.height, 0, oldH);
-                //point(xPos, yPos);
-                rect(xPos, yPos, scale, scale);
-            }
+            xPos = (windowWidth / 2) - (oldW / 2) + map(x, 0, img.width, 0, oldW);
+            yPos = (windowHeight / 2) - (oldH / 2) + map(y, 0, img.height, 0, oldH);
+            
+            dithered.push(new DitheredPoint(xPos, yPos, newColor, newBright / 85));
+            //dithered[dithered.length - 1].drawPoint(scaleBy);
         }
     }
-    //img.updatePixels();
-    //image(img, width / 2, height / 2, originalW / 1.5, originalH / 1.5);
 }
 
 function diffuseError(x, y, rError, gError, bError) {
@@ -116,5 +127,25 @@ function addError(x, y, factor, rError, gError, bError) {
 }
 
 function draw() {
+    fft.analyze();
+    background(20);
+
+    //current arguments for function below result in
+    // the number of bands I need for this example
+    // must figure out way to calculate based on diff input
+    let oBands = fft.getOctaveBands(0.3, 20);
+    let logAvgs = fft.logAverages(oBands);
+    //idea: make class that stores "pixel" or point data of 
+    // to-be displayed image, and have the "brightness" as an
+    // internal class var, to be ref'd in the spectrum loop 
     
+
+    for (let z = 0; z < dithered.length; z++) {
+        let pointSize = noisy.started ? ceil(map(logAvgs[dithered[z].bitDepthVal], 0, 255, 1, scaleBy)) : scaleBy;
+        dithered[z].drawPoint(pointSize);
+        //let alphaVal = noisy.started ? round(logAvgs[dithered[z].bitDepthVal]) : 255;
+        //if (z === 0) console.log(alphaVal);
+        dithered[z].drawPoint(pointSize);
+    }
+    //fsDither(oldImgW, oldImgH, scaleBy);
 }
